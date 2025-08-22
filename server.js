@@ -10,12 +10,13 @@ import { fileURLToPath } from "url";
 import cors from "cors";
 
 const app = express();
+
+ app.use(cors({ origin: "https://filesizecompressor.vercel.app" }));
 const upload = multer({ storage: multer.memoryStorage() });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
- app.use(cors({ origin: "https://filesizecompressor.vercel.app" }));
 // Serve frontend
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -46,8 +47,8 @@ app.post("/compress/video", upload.single("file"), (req, res) => {
   fs.writeFileSync(tmpInput, req.file.buffer);
 
   ffmpeg(tmpInput)
-    .setFfmpegPath("C:\\ffmpeg\\bin\\ffmpeg.exe")
-    .setFfprobePath("C:\\ffmpeg\\bin\\ffprobe.exe")
+    // .setFfmpegPath("C:\\ffmpeg\\bin\\ffmpeg.exe")
+    // .setFfprobePath("C:\\ffmpeg\\bin\\ffprobe.exe")
     .outputOptions(["-vcodec libx264", "-crf 28", "-preset veryfast"])
     .save(tmpOutput)
     .on("end", () => {
