@@ -1,163 +1,466 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>File Size Compressor</title>
-  <link rel="icon" href="data:," />
-  <style>
-    :root {
-      --bg: #0f1115;
-      --panel: rgba(255, 255, 255, 0.06);
-      --text: #e7e9ee;
-      --muted: #757d8b;
-      --accent: #4f8cff;
-      --accent-2: #7c4dff;
-      --ok: #32d296;
-      --warn: #ffcc00;
-      --danger: #ff5a5f;
-      --ring: rgba(79, 140, 255, 0.55);
-      --shadow: 0 10px 30px rgba(0,0,0,0.35);
-      --radius: 18px;
-    }
-    html, body { height: 100%; margin:0; font:15px/1.45 system-ui, -apple-system, Segoe UI, Roboto,"Helvetica Neue", Arial; background: var(--bg); color: var(--text);}
-    .wrap { max-width: 1040px; margin:0 auto; padding:28px;}
-    h1 { font-size: clamp(18px, 2.8vw, 24px); margin-bottom:16px;}
-    .grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 18px;}
-    .panel { grid-column: span 9; background: var(--panel); border:1px solid rgba(255,255,255,0.08); border-radius: var(--radius); backdrop-filter: blur(10px); box-shadow: var(--shadow); padding:16px;}
-    .side { grid-column: span 7;}
-    @media (max-width:920px){ .panel, .side {grid-column: 1/-1;}}
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>File Size Compressor</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: rgba(255, 255, 255, 0.06);
+        --text: #e7e9ee;
+        --muted: #757d8b;
+        --accent: #4f8cff;
+        --accent-2: #7c4dff;
+        --ok: #32d296;
+        --warn: #ffcc00;
+        --danger: #ff5a5f;
+        --ring: rgba(79, 140, 255, 0.55);
+        --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        --radius: 18px;
+      }
 
-    .dropzone { position:relative; margin:16px 0; border:2px dashed rgba(255,255,255,0.18); border-radius: calc(var(--radius)-6px); padding:28px; text-align:center; transition:0.2s ease; cursor:pointer;}
-    .dropzone.drag { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent);}
-    .dropzone input[type="file"] { display: none;}
-    .dz-icon { width:52px; height:52px; border-radius:14px; display:grid; place-items:center; margin:0 auto 10px; background: linear-gradient(135deg, rgba(79,140,255,0.25), rgba(124,77,255,0.25));}
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto,
+          "Helvetica Neue", Arial;
+        background: var(--bg);
+        color: var(--text);
+      }
 
-    .file-info { padding:8px 12px; border-radius:12px; background: rgba(255,255,255,0.08); margin-top:12px;}
-    .file-info .name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-    .file-info .meta { font-size:12px; color: var(--muted);}
-    .btn { appearance:none; border:1px solid transparent; background: var(--panel); color: var(--text); padding:10px 14px; border-radius:12px; cursor:pointer; transition:0.2s ease; box-shadow: var(--shadow);}
-    .btn:hover { transform: translateY(-1px);}
-    .btn:disabled { opacity:0.5; cursor:not-allowed;}
-    .btn:focus { outline:3px solid var(--ring); outline-offset:2px;}
+      .wrap {
+        max-width: 1040px;
+        margin: 0 auto;
+        padding: 28px;
+      }
 
-    .status { margin-top:12px; font-weight:600; min-height:1.5em; }
-    .status.success { color: var(--ok);}
-    .status.error { color: var(--danger);}
-    .status.loading { display:flex; gap:6px; align-items:center; color: var(--accent);}
-    .spinner { width:18px; height:18px; border:2px solid rgba(255,255,255,0.25); border-top-color: var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg);} }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>File Size Compressor</h1>
-    <div class="grid">
-      <!-- Upload Panel -->
-      <section class="panel">
-        <div class="dropzone" id="dropZone">
-          <div class="dz-icon">📁</div>
-          <div><strong>Drag & drop</strong> your file here or <u>click to choose</u>.</div>
-          <input type="file" id="fileInput" />
-        </div>
-        <div class="file-info" id="fileInfo" style="display:none;">
-          <div class="name" id="fileName"></div>
-          <div class="meta" id="fileSize"></div>
-        </div>
-        <button class="btn" id="compressBtn" disabled>Compress File</button>
-        <div class="status" id="status"></div>
-      </section>
+      h1 {
+        font-size: clamp(18px, 2.8vw, 24px);
+        margin-bottom: 16px;
+      }
 
-      <!-- Output Panel -->
-      <aside class="side">
-        <div class="panel">
-          <h3>Download</h3>
-          <div id="downloadInfo">After compression, your file will be ready to download.</div>
-        </div>
-      </aside>
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(16, 1fr);
+        gap: 18px;
+        grid-auto-rows: auto; /* rows size based on content */
+        align-items: start; /* prevents stretching */
+      }
+
+      .panel {
+        grid-column: span 9;
+        background: var(--panel);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: var(--radius);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        padding: 16px;
+      }
+
+      .side {
+        grid-column: span 7;
+      }
+
+      @media (max-width: 920px) {
+        .panel,
+        .side {
+          grid-column: 1/-1;
+        }
+      }
+
+      .dropzone {
+        position: relative;
+        margin: 16px 0;
+        border: 2px dashed rgba(255, 255, 255, 0.18);
+        border-radius: calc(var(--radius)-6px);
+        padding: 28px;
+        text-align: center;
+        transition: 0.2s ease;
+        cursor: pointer;
+        height: auto;
+        min-height: 120px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .dropzone.drag {
+        border-color: var(--accent);
+        box-shadow: inset 0 0 0 2px var(--accent);
+      }
+
+      .dropzone input[type="file"] {
+        display: none;
+      }
+
+      .dz-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        margin: 0 auto 10px;
+        background: linear-gradient(
+          135deg,
+          rgba(79, 140, 255, 0.25),
+          rgba(124, 77, 255, 0.25)
+        );
+      }
+
+      .file-info {
+        padding: 8px 12px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.08);
+        margin-top: 12px;
+      }
+
+      .file-info .name {
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .file-info .meta {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .btn {
+        appearance: none;
+        border: 1px solid transparent;
+        background: var(--panel);
+        color: var(--text);
+        padding: 10px 14px;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: 0.2s ease;
+        box-shadow: var(--shadow);
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+      }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn:focus {
+        outline: 3px solid var(--ring);
+        outline-offset: 2px;
+      }
+
+      .status {
+        margin-top: 12px;
+        font-weight: 600;
+        min-height: 1.5em;
+      }
+      .status.success {
+        color: var(--ok);
+      }
+      .status.error {
+        color: var(--danger);
+      }
+      .status.loading {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        color: var(--accent);
+      }
+
+      .spinner {
+        width: 18px;
+        height: 18px;
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>File Size Compressor</h1>
+      <div class="grid">
+        <!-- Upload Panel -->
+        <section class="panel">
+          <div class="dropzone" id="dropZone">
+            <div class="dz-icon">📁</div>
+            <div>
+              <strong>Drag & drop</strong> your file here or
+              <u>click to choose</u>.
+            </div>
+            <input type="file" id="fileInput" />
+          </div>
+          <div class="file-info" id="fileInfo" style="display: none">
+            <div class="name" id="fileName"></div>
+            <div class="meta" id="fileSize"></div>
+          </div>
+          <button class="btn" id="compressBtn" disabled>Compress File</button>
+          <div class="status" id="status"></div>
+        </section>
+
+        <!-- Output Panel -->
+        <aside class="side">
+          <div class="panel">
+            <h1 style="font-size: 2em; margin-bottom: 15px; color: #d3d3d3">
+              File Size Compressor
+            </h1>
+            <div
+              style="
+                max-width: 700px;
+                margin: 40px auto;
+                padding: 30px;
+                background-color: #bebebe;
+                border-radius: 12px;
+                box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+                font-family: Arial, sans-serif;
+                color: #333;
+                line-height: 1.6;
+              "
+            >
+              <p style="font-size: 1em; margin-bottom: 20px">
+                Our <strong>File Size Compressor</strong> is a lightweight,
+                efficient tool designed to reduce the size of your images,
+                audio, and video files with minimal quality loss. Built
+                primarily with <strong>Express</strong> and powered by
+                <strong>Render</strong>, this service leverages advanced
+                libraries like <strong>Sharp</strong> for images and
+                <strong>FFmpeg</strong> for audio/video processing to provide
+                fast, reliable compression.
+              </p>
+              <h2 style="font-size: 1.3em; margin-bottom: 10px; color: #222">
+                Key Features:
+              </h2>
+              <ul
+                style="
+                  list-style-type: disc;
+                  padding-left: 20px;
+                  margin-bottom: 20px;
+                "
+              >
+                <li>
+                  <strong>Image compression:</strong> Sharp handles resizing and
+                  optimizing images while maintaining clarity.
+                </li>
+                <li>
+                  <strong>Audio & video compression:</strong> FFmpeg, with
+                  @ffmpeg-installer, ensures media files are reduced in size
+                  efficiently.
+                </li>
+                <li>
+                  <strong>Secure, temporary file handling:</strong> Utilizes
+                  Node.js <code>fs</code> and <code>os</code> modules along with
+                  unique UUID filenames for safe, isolated processing.
+                </li>
+                <li>
+                  <strong>Fast uploads & processing:</strong> Multer handles
+                  incoming files seamlessly, making your compression workflow
+                  smooth and straightforward.
+                </li>
+              </ul>
+              <p style="font-size: 1em">
+                Hosted on <strong>Render</strong>, this compressor combines
+                cloud scalability with local performance, providing a simple,
+                powerful solution for all your file optimization needs.
+              </p>
+            </div>
+            <div style="text-align: center; margin: 20px 0">
+              <a
+                href="https://worktoolshub.vercel.app/#contact"
+                target="_blank"
+                style="
+                  display: inline-block;
+                  text-align: center;
+                  padding: 12px 24px;
+                  background: linear-gradient(135deg, #4f8cff, #7cdfff);
+                  color: #fff;
+                  font-weight: 600;
+                  text-decoration: none;
+                  border-radius: 12px;
+                  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+                  transition: all 0.25s ease;
+                "
+                onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 12px 24px rgba(0,0,0,0.25)';"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.2)';"
+              >
+                Report an Issue
+              </a>
+            </div>
+
+            <div
+              class="donation-container"
+              style="text-align: center; margin: 20px 0"
+            >
+              <section class="donation" id="donate">
+                <form
+                  action="https://www.paypal.com/ncp/payment/HJJ5YPE9FKGQN"
+                  method="post"
+                  target="_blank"
+                  style="
+                    display: inline-grid;
+                    justify-items: center;
+                    gap: 0.5rem;
+                  "
+                >
+                  <input
+                    type="submit"
+                    value="Debug My Wallet 🐛💰"
+                    style="
+                      display: inline-block;
+                      padding: 12px 24px;
+                      background: linear-gradient(135deg, #ffd140, #ffc107);
+                      color: #000;
+                      font-weight: 600;
+                      font-family: 'Helvetica Neue', Arial, sans-serif;
+                      font-size: 1rem;
+                      line-height: 1.25rem;
+                      border: none;
+                      border-radius: 12px;
+                      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+                      cursor: pointer;
+                      transition: all 0.25s ease;
+                    "
+                    onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 12px 24px rgba(0,0,0,0.25)';"
+                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.2)';"
+                  />
+                  <img
+                    src="https://www.paypalobjects.com/images/Debit_Credit.svg"
+                    alt="cards"
+                    style="height: 1.5rem"
+                  />
+                  <section style="font-size: 0.75rem">
+                    Powered by
+                    <img
+                      src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg"
+                      alt="paypal"
+                      style="height: 0.875rem; vertical-align: middle"
+                    />
+                  </section>
+                </form>
+              </section>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
-  </div>
 
-<script>
-  const dropZone = document.getElementById("dropZone");
-  const fileInput = document.getElementById("fileInput");
-  const statusEl = document.getElementById("status");
-  const fileInfo = document.getElementById("fileInfo");
-  const fileNameEl = document.getElementById("fileName");
-  const fileSizeEl = document.getElementById("fileSize");
-  const compressBtn = document.getElementById("compressBtn");
-  let selectedFile = null;
+    <script>
+      const dropZone = document.getElementById("dropZone");
+      const fileInput = document.getElementById("fileInput");
+      const statusEl = document.getElementById("status");
+      const fileInfo = document.getElementById("fileInfo");
+      const fileNameEl = document.getElementById("fileName");
+      const fileSizeEl = document.getElementById("fileSize");
+      const compressBtn = document.getElementById("compressBtn");
+      let selectedFile = null;
 
-  function setStatus(message, type="normal"){
-    statusEl.className = "status";
-    if(type==="error") statusEl.classList.add("error");
-    else if(type==="success") statusEl.classList.add("success");
-    else if(type==="loading") statusEl.classList.add("loading");
-    statusEl.textContent = message;
-    if(type==="loading") statusEl.innerHTML = `<div class="spinner"></div> ${message}`;
-  }
+      function setStatus(message, type = "normal") {
+        statusEl.className = "status";
+        if (type === "error") statusEl.classList.add("error");
+        else if (type === "success") statusEl.classList.add("success");
+        else if (type === "loading") statusEl.classList.add("loading");
+        statusEl.textContent = message;
+        if (type === "loading")
+          statusEl.innerHTML = `<div class="spinner"></div> ${message}`;
+      }
 
-  function formatFileSize(bytes){
-    const sizes=['Bytes','KB','MB','GB','TB'];
-    if(bytes===0) return '0 Bytes';
-    const i = Math.floor(Math.log(bytes)/Math.log(1024));
-    return (bytes/Math.pow(1024,i)).toFixed(2)+' '+sizes[i];
-  }
+      function formatFileSize(bytes) {
+        const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+        if (bytes === 0) return "0 Bytes";
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return (bytes / Math.pow(1024, i)).toFixed(2) + " " + sizes[i];
+      }
 
-  function showFileInfo(file){
-    fileNameEl.textContent = file.name;
-    fileSizeEl.textContent = formatFileSize(file.size);
-    fileInfo.style.display="block";
-    compressBtn.disabled=false;
-    setStatus("");
-  }
+      function showFileInfo(file) {
+        fileNameEl.textContent = file.name;
+        fileSizeEl.textContent = formatFileSize(file.size);
+        fileInfo.style.display = "block";
+        compressBtn.disabled = false;
+        setStatus("");
+      }
 
-  function clearFile(){
-    selectedFile=null;
-    fileInfo.style.display="none";
-    compressBtn.disabled=true;
-    setStatus("");
-  }
+      function clearFile() {
+        selectedFile = null;
+        fileInfo.style.display = "none";
+        compressBtn.disabled = true;
+        setStatus("");
+      }
 
-  function handleFile(file){
-    if(!file) return clearFile();
-    const allowedTypes=['image/','video/','audio/'];
-    if(!allowedTypes.some(type=>file.type.startsWith(type))){
-      setStatus("❌ Unsupported file type.", "error");
-      return clearFile();
-    }
-    selectedFile=file;
-    showFileInfo(file);
-  }
+      function handleFile(file) {
+        if (!file) return clearFile();
+        const allowedTypes = ["image/", "video/", "audio/"];
+        if (!allowedTypes.some((type) => file.type.startsWith(type))) {
+          setStatus("❌ Unsupported file type.", "error");
+          return clearFile();
+        }
+        selectedFile = file;
+        showFileInfo(file);
+      }
 
-  dropZone.addEventListener("dragover", e=>{e.preventDefault(); dropZone.classList.add("drag");});
-  dropZone.addEventListener("dragleave", e=>{e.preventDefault(); dropZone.classList.remove("drag");});
-  dropZone.addEventListener("drop", e=>{e.preventDefault(); dropZone.classList.remove("drag"); if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);});
-  dropZone.addEventListener("click", ()=>fileInput.click());
-  fileInput.addEventListener("change", ()=>{ if(fileInput.files.length) handleFile(fileInput.files[0]); });
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("drag");
+      });
+      dropZone.addEventListener("dragleave", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("drag");
+      });
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("drag");
+        if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+      });
+      dropZone.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", () => {
+        if (fileInput.files.length) handleFile(fileInput.files[0]);
+      });
 
-  compressBtn.addEventListener("click", async ()=>{
-    if(!selectedFile) return;
-    setStatus("Compressing...", "loading");
-    compressBtn.disabled=true;
-    const fileType = selectedFile.type.startsWith("image/")?"image":selectedFile.type.startsWith("video/")?"video":"audio";
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-    try{
-      const res = await fetch(`https://filesizecompressor.onrender.com/compress/${fileType}`, {method:"POST", body:formData});
-      if(!res.ok) throw new Error(`Compression failed (status: ${res.status})`);
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      a.href=url; a.download=`compressed_${selectedFile.name}`;
-      document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url);
-      setStatus("✅ File compressed successfully!", "success");
-      clearFile();
-    } catch(err){
-      setStatus("❌ Error: "+err.message,"error");
-      console.error(err);
-    } finally{ compressBtn.disabled=true; }
-  });
-</script>
-</body>
+      compressBtn.addEventListener("click", async () => {
+        if (!selectedFile) return;
+        setStatus("Compressing...", "loading");
+        compressBtn.disabled = true;
+        const fileType = selectedFile.type.startsWith("image/")
+          ? "image"
+          : selectedFile.type.startsWith("video/")
+          ? "video"
+          : "audio";
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        try {
+          const res = await fetch(
+            `https://filesizecompressor.onrender.com/compress/${fileType}`,
+            { method: "POST", body: formData }
+          );
+          if (!res.ok)
+            throw new Error(`Compression failed (status: ${res.status})`);
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `compressed_${selectedFile.name}`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+          setStatus("✅ File compressed successfully!", "success");
+          clearFile();
+        } catch (err) {
+          setStatus("❌ Error: " + err.message, "error");
+          console.error(err);
+        } finally {
+          compressBtn.disabled = true;
+        }
+      });
+    </script>
+  </body>
 </html>
