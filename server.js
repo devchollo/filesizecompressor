@@ -143,61 +143,88 @@ app.post("/compress/image", upload.single("file"), async (req, res) => {
 });
 
 
-app.post("/compress/video", upload.single("file"), (req, res) => {
+// ---------------- VIDEO COMPRESSION ----------------
+app.post("/compress/video", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded");
 
-  const ext = VIDEO_CONFIG.container || "mp4";
-  const outName = `compressed_${path.parse(req.file.originalname).name}.${ext}`;
+  const inputExt = path.extname(req.file.originalname).slice(1) || "mp4";
+  const tmpInput = tmpFile(inputExt);
+  const tmpOutput = tmpFile(VIDEO_CONFIG.container);
 
-  res.setHeader("Content-Type", "video/mp4");
-  res.setHeader("Content-Disposition", `attachment; filename="${outName}"`);
+  try {
+    fs.writeFileSync(tmpInput, req.file.buffer);
 
-  ffmpeg()
-    .input(req.file.buffer)
-    .inputFormat(path.extname(req.file.originalname).slice(1) || "mp4")
-    .outputOptions([
-      `-vcodec ${VIDEO_CONFIG.vCodec}`, // libx264 / mpeg4
-      "-preset ultrafast",              // much faster than superfast
-      "-crf 32",                        // faster + smaller file, lower quality
-      "-movflags +faststart",
-      VIDEO_CONFIG.aCodec === "copy" ? "-an" : `-c:a ${VIDEO_CONFIG.aCodec}`,
-      "-b:a 96k",                       // low bitrate audio
-    ])
-    .on("error", (err) => {
-      console.error("FFmpeg video error:", err.message);
-      if (!res.headersSent) res.status(500).send("Video compression failed");
-    })
-    .on("end", () => console.log("Video compression finished"))
-    .pipe(res, { end: true }); // stream directly to response
+    ffmpeg(tmpInput)
+      .output(tmpOutput)
+      .outputOptions([
+        `-vcodec ${VIDEO_CONFIG.vCodec}`, 
+        "-preset ultrafast",
+        "-crf 32",
+        "-movflags +faststart",
+        VIDEO_CONFIG.aCodec === "copy" ? "-an" : `-c:a ${VIDEO_CONFIG.aCodec}`,
+        "-b:a 96k",
+      ])
+      .on("error", (err) => {
+        console.error("FFmpeg video error:", err.message);
+        cleanup([tmpInput, tmpOutput]);
+        if (!res.headersSent) res.status(500).send("Video compression failed");
+      })
+      .on("end", () => {
+        console.log("Video compression finished");
+        res.download(
+          tmpOutput,
+          `compressed_${path.parse(req.file.originalname).name}.${VIDEO_CONFIG.container}`,
+          () => cleanup([tmpInput, tmpOutput])
+        );
+      })
+      .run();
+  } catch (err) {
+    console.error("Video route error:", err);
+    cleanup([tmpInput, tmpOutput]);
+    res.status(500).send("Video compression failed");
+  }
 });
 
-
-app.post("/compress/audio", upload.single("file"), (req, res) => {
+// ---------------- AUDIO COMPRESSION ----------------
+app.post("/compress/audio", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded");
-
   if (!CODEC_SUPPORT.mp3 && !CODEC_SUPPORT.aac && !CODEC_SUPPORT.opus)
     return res.status(501).send("No suitable audio encoder available");
 
   const ext = AUDIO_CONFIG.container || "mp3";
-  const outName = `compressed_${path.parse(req.file.originalname).name}.${ext}`;
+  const tmpInput = tmpFile(path.extname(req.file.originalname).slice(1) || "mp3");
+  const tmpOutput = tmpFile(ext);
 
-  res.setHeader("Content-Type", AUDIO_CONFIG.mime);
-  res.setHeader("Content-Disposition", `attachment; filename="${outName}"`);
+  try {
+    fs.writeFileSync(tmpInput, req.file.buffer);
 
-  const chain = ffmpeg()
-    .input(req.file.buffer)
-    .outputOptions([
-      `-acodec ${AUDIO_CONFIG.codec}`,
-      AUDIO_CONFIG.codec === "libmp3lame" ? "-b:a 96k" : "",
-      AUDIO_CONFIG.codec === "aac" ? "-b:a 96k" : "",
-      AUDIO_CONFIG.codec === "libopus" ? "-b:a 64k" : "",
-    ])
-    .on("error", (err) => {
-      console.error("FFmpeg audio error:", err.message);
-      if (!res.headersSent) res.status(500).send("Audio compression failed");
-    })
-    .on("end", () => console.log("Audio compression finished"))
-    .pipe(res, { end: true }); // stream directly to response
+    ffmpeg(tmpInput)
+      .output(tmpOutput)
+      .outputOptions([
+        `-acodec ${AUDIO_CONFIG.codec}`,
+        AUDIO_CONFIG.codec === "libmp3lame" ? "-b:a 96k" : "",
+        AUDIO_CONFIG.codec === "aac" ? "-b:a 96k" : "",
+        AUDIO_CONFIG.codec === "libopus" ? "-b:a 64k" : "",
+      ])
+      .on("error", (err) => {
+        console.error("FFmpeg audio error:", err.message);
+        cleanup([tmpInput, tmpOutput]);
+        if (!res.headersSent) res.status(500).send("Audio compression failed");
+      })
+      .on("end", () => {
+        console.log("Audio compression finished");
+        res.download(
+          tmpOutput,
+          `compressed_${path.parse(req.file.originalname).name}.${ext}`,
+          () => cleanup([tmpInput, tmpOutput])
+        );
+      })
+      .run();
+  } catch (err) {
+    console.error("Audio route error:", err);
+    cleanup([tmpInput, tmpOutput]);
+    res.status(500).send("Audio compression failed");
+  }
 });
 
 
