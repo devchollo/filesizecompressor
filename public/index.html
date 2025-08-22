@@ -1,90 +1,82 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>File Size Compressor - Image, Audio and Video size reducer</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>File Size Compressor</title>
+  <link rel="icon" href="data:," />
   <style>
-    /* Glassmorphism container */
-    .glass {
-      background: rgba(32, 35, 42, 0.6);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border-radius: 1.5rem;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      box-shadow:
-        0 4px 30px rgba(0, 0, 0, 0.5);
+    :root {
+      --bg: #0f1115;
+      --panel: rgba(255, 255, 255, 0.06);
+      --text: #e7e9ee;
+      --muted: #757d8b;
+      --accent: #4f8cff;
+      --accent-2: #7c4dff;
+      --ok: #32d296;
+      --warn: #ffcc00;
+      --danger: #ff5a5f;
+      --ring: rgba(79, 140, 255, 0.55);
+      --shadow: 0 10px 30px rgba(0,0,0,0.35);
+      --radius: 18px;
     }
-    /* Button glass */
-    .glass-btn {
-      background: rgba(88, 99, 242, 0.8);
-      box-shadow:
-        0 8px 32px 0 rgba(88, 99, 242, 0.4);
-      transition: background-color 0.3s ease;
-    }
-    .glass-btn:hover,
-    .glass-btn:focus {
-      background: rgba(88, 99, 242, 1);
-      box-shadow:
-        0 10px 40px 0 rgba(88, 99, 242, 0.7);
-    }
-    /* Input drag area border highlight */
-    .dropzone-active {
-      border-color: #5863f2 !important; /* Indigo */
-      background: rgba(88, 99, 242, 0.15) !important;
-      box-shadow: 0 0 15px rgba(88, 99, 242, 0.7);
-    }
-    /* Spinner */
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    html, body { height: 100%; margin:0; font:15px/1.45 system-ui, -apple-system, Segoe UI, Roboto,"Helvetica Neue", Arial; background: var(--bg); color: var(--text);}
+    .wrap { max-width: 1040px; margin:0 auto; padding:28px;}
+    h1 { font-size: clamp(18px, 2.8vw, 24px); margin-bottom:16px;}
+    .grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 18px;}
+    .panel { grid-column: span 9; background: var(--panel); border:1px solid rgba(255,255,255,0.08); border-radius: var(--radius); backdrop-filter: blur(10px); box-shadow: var(--shadow); padding:16px;}
+    .side { grid-column: span 7;}
+    @media (max-width:920px){ .panel, .side {grid-column: 1/-1;}}
+
+    .dropzone { position:relative; margin:16px 0; border:2px dashed rgba(255,255,255,0.18); border-radius: calc(var(--radius)-6px); padding:28px; text-align:center; transition:0.2s ease; cursor:pointer;}
+    .dropzone.drag { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent);}
+    .dropzone input[type="file"] { position:absolute; inset:0; opacity:0; cursor:pointer;}
+    .dz-icon { width:52px; height:52px; border-radius:14px; display:grid; place-items:center; margin:0 auto 10px; background: linear-gradient(135deg, rgba(79,140,255,0.25), rgba(124,77,255,0.25));}
+
+    .file-info { padding:8px 12px; border-radius:12px; background: rgba(255,255,255,0.08); margin-top:12px;}
+    .file-info .name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+    .file-info .meta { font-size:12px; color: var(--muted);}
+    .btn { appearance:none; border:1px solid transparent; background: var(--panel); color: var(--text); padding:10px 14px; border-radius:12px; cursor:pointer; transition:0.2s ease; box-shadow: var(--shadow);}
+    .btn:hover { transform: translateY(-1px);}
+    .btn:disabled { opacity:0.5; cursor:not-allowed;}
+    .btn:focus { outline:3px solid var(--ring); outline-offset:2px;}
+
+    .status { margin-top:12px; font-weight:600; min-height:1.5em; }
+    .status.success { color: var(--ok);}
+    .status.error { color: var(--danger);}
+    .status.loading { display:flex; gap:6px; align-items:center; color: var(--accent);}
+    .spinner { width:18px; height:18px; border:2px solid rgba(255,255,255,0.25); border-top-color: var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg);} }
   </style>
 </head>
-<body class="bg-gradient-to-tr from-[#121217] to-[#1d1f27] min-h-screen flex items-center justify-center px-5 font-sans text-gray-300">
+<body>
+  <div class="wrap">
+    <h1>File Size Compressor</h1>
+    <div class="grid">
+      <!-- Upload Panel -->
+      <section class="panel">
+        <div class="dropzone" id="dropZone">
+          <div class="dz-icon">📁</div>
+          <div><strong>Drag & drop</strong> your file here or <u>click to choose</u>.</div>
+          <input type="file" id="fileInput" />
+        </div>
+        <div class="file-info" id="fileInfo" style="display:none;">
+          <div class="name" id="fileName"></div>
+          <div class="meta" id="fileSize"></div>
+        </div>
+        <button class="btn" id="compressBtn" disabled>Compress File</button>
+        <div class="status" id="status"></div>
+      </section>
 
-  <main class="glass max-w-md w-full p-10">
-    <h1 class="text-4xl font-extrabold mb-8 text-white select-none text-center tracking-wide">File Size Compressor</h1>
-
-    <!-- Drag & Drop Zone -->
-    <div id="dropZone"
-      tabindex="0"
-      role="button"
-      aria-label="File upload drop zone. Press Enter or Space to select a file. Drag and drop a file here."
-      class="glass border-2 border-dashed border-gray-600 rounded-3xl p-12 cursor-pointer focus:outline-none focus:ring-4 focus:ring-indigo-500 transition text-center select-none text-gray-400 hover:text-indigo-400"
-    >
-      <!-- Cloud Upload Icon -->
-<svg xmlns="http://www.w3.org/2000/svg" class="mx-auto mb-5 h-20 w-20 stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M16.88 9.94A5 5 0 005.82 8.41 4.5 4.5 0 0012 17.5h4a4 4 0 000-8h-.12z" />
-  <path d="M12 12v6m-3-3l3-3 3 3" />
-</svg>
-      <p class="text-lg font-medium">
-        Drag &amp; Drop your file here
-        <span class="block mt-2 text-indigo-400 underline cursor-pointer">or click to browse</span>
-      </p>
-
-      <input type="file" id="fileInput" class="hidden" aria-hidden="true" />
+      <!-- Output Panel -->
+      <aside class="side">
+        <div class="panel">
+          <h3>Download</h3>
+          <div id="downloadInfo">After compression, your file will be ready to download.</div>
+        </div>
+      </aside>
     </div>
-
-    <!-- File info -->
-    <div id="fileInfo" class="mt-6 text-indigo-400 font-semibold truncate hidden" title="">
-      <p><span id="fileName"></span> - <span id="fileSize"></span></p>
-    </div>
-
-    <!-- Compress button -->
-    <button
-      id="compressBtn"
-      disabled
-      class="w-full mt-8 py-3 rounded-xl text-white font-semibold glass-btn shadow-lg disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-4 focus:ring-indigo-500"
-      aria-live="polite"
-    >
-      Compress File
-    </button>
-
-    <!-- Status Message -->
-    <p id="status" role="alert" class="mt-6 text-center text-lg font-semibold break-words min-h-[1.5em]"></p>
-
-  </main>
+  </div>
 
 <script>
   const dropZone = document.getElementById("dropZone");
@@ -94,163 +86,78 @@
   const fileNameEl = document.getElementById("fileName");
   const fileSizeEl = document.getElementById("fileSize");
   const compressBtn = document.getElementById("compressBtn");
-
   let selectedFile = null;
 
-  function setStatus(message, type = "normal") {
-    statusEl.textContent = "";
-    statusEl.className = "mt-6 text-center text-lg font-semibold break-words min-h-[1.5em]";
-    if (type === "error") {
-      statusEl.classList.add("text-red-500");
-    } else if (type === "success") {
-      statusEl.classList.add("text-green-400");
-    } else if (type === "loading") {
-      statusEl.classList.add("text-indigo-400","flex","justify-center","items-center","gap-2");
-      statusEl.innerHTML = `
-        <svg class="animate-spin h-6 w-6 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-        </svg> ${message}
-      `;
-      return;
-    }
+  function setStatus(message, type="normal"){
+    statusEl.className = "status";
+    if(type==="error") statusEl.classList.add("error");
+    else if(type==="success") statusEl.classList.add("success");
+    else if(type==="loading") statusEl.classList.add("loading");
     statusEl.textContent = message;
+    if(type==="loading") statusEl.innerHTML = `<div class="spinner"></div> ${message}`;
   }
 
-  // Format bytes as human readable
-  function formatFileSize(bytes) {
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    if (bytes === 0) return '0 Bytes';
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
+  function formatFileSize(bytes){
+    const sizes=['Bytes','KB','MB','GB','TB'];
+    if(bytes===0) return '0 Bytes';
+    const i = Math.floor(Math.log(bytes)/Math.log(1024));
+    return (bytes/Math.pow(1024,i)).toFixed(2)+' '+sizes[i];
   }
 
-  function showFileInfo(file) {
+  function showFileInfo(file){
     fileNameEl.textContent = file.name;
     fileSizeEl.textContent = formatFileSize(file.size);
-    fileInfo.classList.remove("hidden");
-    fileInfo.title = `${file.name} (${formatFileSize(file.size)})`;
-    compressBtn.disabled = false;
-    setStatus("", "normal");
+    fileInfo.style.display="block";
+    compressBtn.disabled=false;
+    setStatus("");
   }
 
-  function clearFile() {
-    selectedFile = null;
-    fileInfo.classList.add("hidden");
-    compressBtn.disabled = true;
-    setStatus("", "normal");
+  function clearFile(){
+    selectedFile=null;
+    fileInfo.style.display="none";
+    compressBtn.disabled=true;
+    setStatus("");
   }
 
-  function handleFile(file) {
-    if (!file) return clearFile();
-
-    const allowedTypes = ['image/', 'video/', 'audio/'];
-    if (!allowedTypes.some(type => file.type.startsWith(type))) {
-      setStatus("❌ Unsupported file type. Please select an image, video, or audio file.", "error");
+  function handleFile(file){
+    if(!file) return clearFile();
+    const allowedTypes=['image/','video/','audio/'];
+    if(!allowedTypes.some(type=>file.type.startsWith(type))){
+      setStatus("❌ Unsupported file type.", "error");
       return clearFile();
     }
-
-    selectedFile = file;
+    selectedFile=file;
     showFileInfo(file);
   }
 
-  // Drag & Drop zone styling helper
-  function activateDropZone() {
-    dropZone.classList.add("dropzone-active");
-  }
-  function deactivateDropZone() {
-    dropZone.classList.remove("dropzone-active");
-  }
+  dropZone.addEventListener("dragover", e=>{e.preventDefault(); dropZone.classList.add("drag");});
+  dropZone.addEventListener("dragleave", e=>{e.preventDefault(); dropZone.classList.remove("drag");});
+  dropZone.addEventListener("drop", e=>{e.preventDefault(); dropZone.classList.remove("drag"); if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);});
+  dropZone.addEventListener("click", ()=>fileInput.click());
+  fileInput.addEventListener("change", ()=>{ if(fileInput.files.length) handleFile(fileInput.files[0]); });
 
-  dropZone.addEventListener("dragover", e => {
-    e.preventDefault();
-    activateDropZone();
-  });
-
-  dropZone.addEventListener("dragleave", e => {
-    e.preventDefault();
-    deactivateDropZone();
-  });
-
-  dropZone.addEventListener("drop", e => {
-    e.preventDefault();
-    deactivateDropZone();
-    if (e.dataTransfer.files.length > 0) {
-      handleFile(e.dataTransfer.files[0]);
-    }
-  });
-
-  // Keyboard interaction for drop zone (to open file picker)
-  dropZone.addEventListener("keydown", e => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      fileInput.click();
-    }
-  });
-
-  dropZone.addEventListener("click", () => {
-    fileInput.click();
-  });
-
-  fileInput.addEventListener("change", () => {
-    if (fileInput.files.length > 0) {
-      handleFile(fileInput.files[0]);
-    }
-  });
-
-  compressBtn.addEventListener("click", async () => {
-    if (!selectedFile) return;
-
-    setStatus("Compressing... Please wait.", "loading");
-    compressBtn.disabled = true;
-    dropZone.classList.add("pointer-events-none", "opacity-70");
-
-    const fileType = selectedFile.type.startsWith("image/") ? "image"
-      : selectedFile.type.startsWith("video/") ? "video"
-      : selectedFile.type.startsWith("audio/") ? "audio"
-      : "";
-
-    if (!fileType) {
-      setStatus("❌ Unsupported file type.", "error");
-      compressBtn.disabled = false;
-      dropZone.classList.remove("pointer-events-none", "opacity-70");
-      return;
-    }
-
+  compressBtn.addEventListener("click", async ()=>{
+    if(!selectedFile) return;
+    setStatus("Compressing...", "loading");
+    compressBtn.disabled=true;
+    const fileType = selectedFile.type.startsWith("image/")?"image":selectedFile.type.startsWith("video/")?"video":"audio";
     const formData = new FormData();
     formData.append("file", selectedFile);
-
-    try {
-      const response = await fetch(`https://filesizecompressor.onrender.com/compress/${fileType}`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) throw new Error(`Compression failed (status: ${response.status})`);
-
-      const blob = await response.blob();
-
-      // Trigger download
+    try{
+      const res = await fetch(`https://filesizecompressor.onrender.com/compress/${fileType}`, {method:"POST", body:formData});
+      if(!res.ok) throw new Error(`Compression failed (status: ${res.status})`);
+      const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `compressed_${selectedFile.name}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-
+      const a=document.createElement("a");
+      a.href=url; a.download=`compressed_${selectedFile.name}`;
+      document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url);
       setStatus("✅ File compressed successfully!", "success");
       clearFile();
-    } catch (err) {
+    } catch(err){
+      setStatus("❌ Error: "+err.message,"error");
       console.error(err);
-      setStatus("❌ Error: " + err.message, "error");
-    } finally {
-      compressBtn.disabled = true;
-      dropZone.classList.remove("pointer-events-none", "opacity-70");
-    }
+    } finally{ compressBtn.disabled=true; }
   });
 </script>
-
 </body>
 </html>
