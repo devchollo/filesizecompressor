@@ -142,89 +142,64 @@ app.post("/compress/image", upload.single("file"), async (req, res) => {
   }
 });
 
-// ---------------- VIDEO COMPRESSION ----------------
+
 app.post("/compress/video", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded");
 
-  const inExt = path.extname(req.file.originalname).replace(/^\./, "") || "tmp";
-  const tmpInput = tmpFile(inExt);
-  const tmpOutput = tmpFile(VIDEO_CONFIG.container); // mp4 by default
-  fs.writeFileSync(tmpInput, req.file.buffer);
+  const ext = VIDEO_CONFIG.container || "mp4";
+  const outName = `compressed_${path.parse(req.file.originalname).name}.${ext}`;
 
-  const outName = `compressed_${path.parse(req.file.originalname).name}.${VIDEO_CONFIG.container}`;
-  res.setHeader("Content-Type", "video/mp4"); // container is mp4 in both x264/mpeg4 paths
+  res.setHeader("Content-Type", "video/mp4");
   res.setHeader("Content-Disposition", `attachment; filename="${outName}"`);
 
-  const cmd = ffmpeg(tmpInput)
+  ffmpeg()
+    .input(req.file.buffer)
+    .inputFormat(path.extname(req.file.originalname).slice(1) || "mp4")
     .outputOptions([
-      `-vcodec ${VIDEO_CONFIG.vCodec}`,
-      "-crf 28",
-      "-preset superfast",
-      `-c:a ${VIDEO_CONFIG.aCodec}`,
-      "-b:a 128k",
-      "-movflags +faststart", // better streaming
+      `-vcodec ${VIDEO_CONFIG.vCodec}`, // libx264 / mpeg4
+      "-preset ultrafast",              // much faster than superfast
+      "-crf 32",                        // faster + smaller file, lower quality
+      "-movflags +faststart",
+      VIDEO_CONFIG.aCodec === "copy" ? "-an" : `-c:a ${VIDEO_CONFIG.aCodec}`,
+      "-b:a 96k",                       // low bitrate audio
     ])
     .on("error", (err) => {
       console.error("FFmpeg video error:", err.message);
       if (!res.headersSent) res.status(500).send("Video compression failed");
-      cleanup([tmpInput, tmpOutput]);
     })
-    .on("end", () => {
-      const readStream = fs.createReadStream(tmpOutput);
-      readStream.pipe(res);
-      readStream.on("close", () => cleanup([tmpInput, tmpOutput]));
-    })
-    .save(tmpOutput);
-
-  // If no audio encoder available and copy also fails for some inputs, you can
-  // conditionally drop audio instead by replacing aCodec with "none" and adding "-an".
+    .on("end", () => console.log("Video compression finished"))
+    .pipe(res, { end: true }); // stream directly to response
 });
 
-// ---------------- AUDIO COMPRESSION ----------------
+
 app.post("/compress/audio", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded");
 
-  if (!CODEC_SUPPORT.mp3 && !CODEC_SUPPORT.aac && !CODEC_SUPPORT.opus) {
-    return res
-      .status(501)
-      .send("No suitable audio encoders available on this server (MP3/AAC/Opus).");
-  }
+  if (!CODEC_SUPPORT.mp3 && !CODEC_SUPPORT.aac && !CODEC_SUPPORT.opus)
+    return res.status(501).send("No suitable audio encoder available");
 
-  const inExt = path.extname(req.file.originalname).replace(/^\./, "") || "tmp";
-  const tmpInput = tmpFile(inExt);
-  const tmpOutput = tmpFile(AUDIO_CONFIG.container);
-  fs.writeFileSync(tmpInput, req.file.buffer);
-
-  const base = path.parse(req.file.originalname).name;
-  const outName = `compressed_${base}.${AUDIO_CONFIG.container}`;
+  const ext = AUDIO_CONFIG.container || "mp3";
+  const outName = `compressed_${path.parse(req.file.originalname).name}.${ext}`;
 
   res.setHeader("Content-Type", AUDIO_CONFIG.mime);
   res.setHeader("Content-Disposition", `attachment; filename="${outName}"`);
 
-  const chain = ffmpeg(tmpInput)
-    .audioCodec(AUDIO_CONFIG.codec)
+  const chain = ffmpeg()
+    .input(req.file.buffer)
+    .outputOptions([
+      `-acodec ${AUDIO_CONFIG.codec}`,
+      AUDIO_CONFIG.codec === "libmp3lame" ? "-b:a 96k" : "",
+      AUDIO_CONFIG.codec === "aac" ? "-b:a 96k" : "",
+      AUDIO_CONFIG.codec === "libopus" ? "-b:a 64k" : "",
+    ])
     .on("error", (err) => {
       console.error("FFmpeg audio error:", err.message);
       if (!res.headersSent) res.status(500).send("Audio compression failed");
-      cleanup([tmpInput, tmpOutput]);
     })
-    .on("end", () => {
-      const readStream = fs.createReadStream(tmpOutput);
-      readStream.pipe(res);
-      readStream.on("close", () => cleanup([tmpInput, tmpOutput]));
-    });
-
-  // Bitrate / sample rate per codec
-  if (AUDIO_CONFIG.codec === "libmp3lame") {
-    chain.audioBitrate("96k").format("mp3");
-  } else if (AUDIO_CONFIG.codec === "aac") {
-    chain.audioBitrate("96k").format("ipod"); // m4a/aac in mp4 container
-  } else if (AUDIO_CONFIG.codec === "libopus") {
-    chain.audioBitrate("64k").format("ogg");
-  }
-
-  chain.save(tmpOutput);
+    .on("end", () => console.log("Audio compression finished"))
+    .pipe(res, { end: true }); // stream directly to response
 });
+
 
 // ---------------- Serve static frontend ----------------
 if (fs.existsSync(publicDir)) {
