@@ -21,17 +21,21 @@ const upload = multer({ storage: multer.memoryStorage() });
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 // ---------------- CORS ----------------
+// Allow your frontend or all origins
 app.use(
   cors({
-    origin: "https://filesizecompressor.vercel.app",
+    origin: "https://filesizecompressor.vercel.app", // change to "*" if testing
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
   })
 );
-app.options("*", cors()); // preflight requests
+app.options("*", cors()); // handle preflight requests
 
 // ---------------- Serve frontend (optional) ----------------
-app.use(express.static(path.join(__dirname, "public")));
+const publicDir = path.join(__dirname, "public");
+if (fs.existsSync(publicDir)) {
+  app.use(express.static(publicDir));
+}
 
 // ---------------- IMAGE COMPRESSION ----------------
 app.post("/compress/image", upload.single("file"), async (req, res) => {
@@ -39,7 +43,7 @@ app.post("/compress/image", upload.single("file"), async (req, res) => {
     if (!req.file) return res.status(400).send("No file uploaded");
 
     const buffer = await sharp(req.file.buffer)
-      .resize({ width: 800 }) // optional
+      .resize({ width: 800 }) // optional resize
       .jpeg({ quality: 70 })
       .toBuffer();
 
