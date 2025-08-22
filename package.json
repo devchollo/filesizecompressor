@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/devchollo/filesizecompressor#readme",
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "fluent-ffmpeg": "^2.1.3",
