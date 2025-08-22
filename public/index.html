@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>File Size Reducer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+  <div class="bg-white shadow-lg rounded-2xl p-8 w-full max-w-md text-center">
+    <h1 class="text-2xl font-bold mb-6">File Size Reducer</h1>
+
+    <!-- Drag & Drop Zone -->
+    <div id="dropZone" 
+         class="border-2 border-dashed border-gray-300 rounded-xl p-8 cursor-pointer 
+                hover:bg-gray-50 transition">
+      <p class="text-gray-600">Drag & Drop your file here<br>or click to select</p>
+      <input type="file" id="fileInput" class="hidden" />
+    </div>
+
+    <!-- Status Message -->
+    <p id="status" class="mt-4 text-gray-600 hidden"></p>
+  </div>
+
+  <script>
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const statusEl = document.getElementById("status");
+
+    // Handle clicks on dropzone
+    dropZone.addEventListener("click", () => fileInput.click());
+
+    // Drag & Drop events
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("bg-gray-50", "border-blue-400");
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("bg-gray-50", "border-blue-400");
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("bg-gray-50", "border-blue-400");
+      handleFile(e.dataTransfer.files[0]);
+    });
+
+    // Fallback file input
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files.length) {
+        handleFile(fileInput.files[0]);
+      }
+    });
+
+    async function handleFile(file) {
+      if (!file) return;
+      statusEl.classList.remove("hidden");
+      statusEl.textContent = "Compressing... Please wait.";
+
+      let fileType = "";
+      if (file.type.startsWith("image/")) fileType = "image";
+      else if (file.type.startsWith("video/")) fileType = "video";
+      else if (file.type.startsWith("audio/")) fileType = "audio";
+      else {
+        statusEl.textContent = "❌ Unsupported file type.";
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const response = await fetch(`/compress/${fileType}`, {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) throw new Error("Compression failed");
+
+        const blob = await response.blob();
+
+        // Trigger download
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `compressed_${file.name}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        statusEl.textContent = "✅ File compressed successfully!";
+      } catch (err) {
+        statusEl.textContent = "❌ Error: " + err.message;
+      }
+    }
+  </script>
+</body>
+</html>
