@@ -7,6 +7,11 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import cors from "cors";
+
+
+ app.use(cors({ origin: "https://filesizecompressor.vercel.app" }));
+
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
