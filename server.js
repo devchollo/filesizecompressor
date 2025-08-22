@@ -55,7 +55,7 @@ app.post("/compress/image", upload.single("file"), async (req, res) => {
       .resize({ width: 800 })
       .jpeg({ quality: 70 })
       .toBuffer();
-
+res.setHeader("Access-Control-Allow-Origin", "https://filesizecompressor.vercel.app");
     res.setHeader("Content-Type", "image/jpeg");
     res.send(buffer);
   } catch (err) {
@@ -70,7 +70,7 @@ app.post("/compress/video", upload.single("file"), (req, res) => {
 
   const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
   fs.writeFileSync(tmpInput, req.file.buffer);
-
+res.setHeader("Access-Control-Allow-Origin", "https://filesizecompressor.vercel.app");
   res.setHeader("Content-Type", "video/mp4");
   res.setHeader(
     "Content-Disposition",
@@ -97,7 +97,7 @@ app.post("/compress/audio", upload.single("file"), (req, res) => {
 
   const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
   fs.writeFileSync(tmpInput, req.file.buffer);
-
+res.setHeader("Access-Control-Allow-Origin", "https://filesizecompressor.vercel.app");
   res.setHeader("Content-Type", "audio/mpeg");
   res.setHeader(
     "Content-Disposition",
