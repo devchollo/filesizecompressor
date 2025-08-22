@@ -71,7 +71,7 @@
       formData.append("file", file);
 
       try {
-        const response = await fetch(`/compress/${fileType}`, {
+        const response = await fetch(`https://filesizecompressor.onrender.com/compress/${fileType}`, {
           method: "POST",
           body: formData,
         });
