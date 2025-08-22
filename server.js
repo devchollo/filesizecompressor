@@ -20,15 +20,17 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Use cross-platform FFmpeg
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
-// Apply CORS globally
-app.use(cors({
-  origin: "https://filesizecompressor.vercel.app",
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"]
-}));
+// ---------------- CORS ----------------
+app.use(
+  cors({
+    origin: "https://filesizecompressor.vercel.app",
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
 app.options("*", cors()); // preflight requests
 
-// Serve frontend (if needed)
+// ---------------- Serve frontend (optional) ----------------
 app.use(express.static(path.join(__dirname, "public")));
 
 // ---------------- IMAGE COMPRESSION ----------------
@@ -36,27 +38,27 @@ app.post("/compress/image", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).send("No file uploaded");
 
-    const compressedBuffer = await sharp(req.file.buffer)
-      .resize({ width: 800 }) // optional resize
+    const buffer = await sharp(req.file.buffer)
+      .resize({ width: 800 }) // optional
       .jpeg({ quality: 70 })
       .toBuffer();
 
     res.setHeader("Content-Type", "image/jpeg");
-    res.send(compressedBuffer);
+    res.send(buffer);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Image compression failed" });
+    console.error("Image compression error:", err);
+    res.status(500).send("Image compression failed");
   }
 });
 
 // ---------------- VIDEO COMPRESSION ----------------
 app.post("/compress/video", upload.single("file"), async (req, res) => {
+  if (!req.file) return res.status(400).send("No file uploaded");
+
+  const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
+  const tmpOutput = path.join(os.tmpdir(), `${uuidv4()}_compressed.mp4`);
+
   try {
-    if (!req.file) return res.status(400).send("No file uploaded");
-
-    const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
-    const tmpOutput = path.join(os.tmpdir(), `${uuidv4()}_compressed.mp4`);
-
     fs.writeFileSync(tmpInput, req.file.buffer);
 
     ffmpeg(tmpInput)
@@ -68,37 +70,39 @@ app.post("/compress/video", upload.single("file"), async (req, res) => {
           "Content-Disposition",
           `attachment; filename="compressed_${req.file.originalname}"`
         );
-        fs.createReadStream(tmpOutput).pipe(res).on("close", () => {
+
+        const stream = fs.createReadStream(tmpOutput);
+        stream.pipe(res).on("close", () => {
           fs.unlinkSync(tmpInput);
           fs.unlinkSync(tmpOutput);
         });
       })
       .on("error", (err) => {
-        console.error("FFmpeg error:", err);
+        console.error("FFmpeg video error:", err);
         if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
         if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput);
         res.status(500).send("Video compression failed");
       });
   } catch (err) {
-    console.error(err);
+    console.error("Video processing error:", err);
+    if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
+    if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput);
     res.status(500).send("Server error");
   }
 });
 
 // ---------------- AUDIO COMPRESSION ----------------
 app.post("/compress/audio", upload.single("file"), async (req, res) => {
+  if (!req.file) return res.status(400).send("No file uploaded");
+
+  const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
+  fs.writeFileSync(tmpInput, req.file.buffer);
+
   try {
-    if (!req.file) return res.status(400).send("No file uploaded");
-
-    const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
-    fs.writeFileSync(tmpInput, req.file.buffer);
-
     ffmpeg(tmpInput)
       .audioBitrate("128k")
       .format("mp3")
-      .on("end", () => {
-        fs.unlinkSync(tmpInput);
-      })
+      .on("end", () => fs.unlinkSync(tmpInput))
       .on("error", (err) => {
         console.error("FFmpeg audio error:", err);
         if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
@@ -106,7 +110,8 @@ app.post("/compress/audio", upload.single("file"), async (req, res) => {
       })
       .pipe(res, { end: true });
   } catch (err) {
-    console.error(err);
+    console.error("Audio processing error:", err);
+    if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
     res.status(500).send("Server error");
   }
 });
