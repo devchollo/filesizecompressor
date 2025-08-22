@@ -18,6 +18,13 @@ const publicDir = path.join(__dirname, "public");
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
+// ---------------- Wrap app.get for route logging ----------------
+const originalGet = app.get.bind(app);
+app.get = (routePath, ...args) => {
+  console.log("Registering GET route:", routePath);
+  return originalGet(routePath, ...args);
+};
+
 // Use cross-platform FFmpeg from installer
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
@@ -127,7 +134,6 @@ if (fs.existsSync(publicDir)) {
 
 // ---------------- SPA fallback ----------------
 app.get(/^(?!\/compress\/).*/, (req, res) => {
-  // Only fallback if not a /compress route
   const indexHtml = path.join(publicDir, "index.html");
   if (fs.existsSync(indexHtml)) {
     res.sendFile(indexHtml);
