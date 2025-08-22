@@ -9,15 +9,13 @@ import { fileURLToPath } from "url";
 
 import cors from "cors";
 
-
- app.use(cors({ origin: "https://filesizecompressor.vercel.app" }));
-
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+ app.use(cors({ origin: "https://filesizecompressor.vercel.app" }));
 // Serve frontend
 app.use(express.static(path.join(__dirname, "public")));
 
