@@ -21,14 +21,48 @@ const upload = multer({ storage: multer.memoryStorage() });
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 // ---------------- CORS ----------------
+// ---------------- CORS ----------------
+import cors from "cors";
+
+const allowedOrigins = [
+  "https://filesizecompressor.vercel.app", // your frontend
+  "http://localhost:3000", // optional for local dev
+];
+
 app.use(
   cors({
-    origin: "https://filesizecompressor.vercel.app",
+    origin: function (origin, callback) {
+      // allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) === -1) {
+        const msg = `The CORS policy for this site does not allow access from the specified Origin.`;
+        return callback(new Error(msg), false);
+      }
+      return callback(null, true);
+    },
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
   })
 );
+
+// Handle preflight requests
 app.options("*", cors());
+
+// ---------------- Serve frontend safely ----------------
+if (fs.existsSync(publicDir)) {
+  app.use(express.static(publicDir)); // only relative path
+}
+
+// Catch-all to serve index.html for SPA routing
+app.get("*", (req, res, next) => {
+  const indexHtml = path.join(publicDir, "index.html");
+  if (fs.existsSync(indexHtml)) {
+    res.sendFile(indexHtml);
+  } else {
+    next(); // fallback to 404 handler
+  }
+});
+
 
 // ---------------- Serve frontend ----------------
 const publicDir = path.join(__dirname, "public");
