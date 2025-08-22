@@ -4,7 +4,7 @@
   "description": "- should accept image files, audio and video\r  - service worker will be on render to avoid vercel 4.5 payload limit\r  - no storage \r  - express, and dependencies\r  - commonJS\r  - static frontend",
   "main": "index.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node --experimental-specifier-resolution=node server.js",
     "dev": "nodemon server.js"
   },
   "repository": {
