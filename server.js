@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 import { v4 as uuidv4 } from "uuid";
 import cors from "cors";
 
-// ---------------- Setup ----------------
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "public");
@@ -20,10 +20,10 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
-// ---------------- CORS ----------------
+
 const allowedOrigins = [
   "https://filesizecompressor.vercel.app",
-  "http://localhost:3000", // dev
+  "http://localhost:10000", // dev
 ];
 
 app.use(
@@ -39,13 +39,12 @@ app.use(
 );
 app.options("*", cors());
 
-// ---------------- Request Logger ----------------
+
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
 });
 
-// ---------------- FFmpeg codec detection & fallbacks ----------------
 const CODEC_SUPPORT = {
   x264: false,
   mpeg4: false,
@@ -114,7 +113,7 @@ ffmpeg.getAvailableCodecs((err, codecs) => {
   logCodecPlan();
 });
 
-// ---------------- Helpers ----------------
+
 const tmpFile = (ext = "") => path.join(os.tmpdir(), `${uuidv4()}${ext ? "." + ext : ""}`);
 const cleanup = (files = []) =>
   files.forEach((f) => {
@@ -123,27 +122,37 @@ const cleanup = (files = []) =>
     } catch (_) {}
   });
 
-// ---------------- IMAGE COMPRESSION ----------------
 app.post("/compress/image", upload.single("file"), async (req, res) => {
+  if (!req.file) return res.status(400).send("No file uploaded");
+
+  const ext = path.extname(req.file.originalname).slice(1) || "jpg";
+  const tmpInput = tmpFile(ext);
+  const tmpOutput = tmpFile("jpg"); // output as JPEG
+
   try {
-    if (!req.file) return res.status(400).send("No file uploaded");
+    // Write the uploaded file to temp
+    fs.writeFileSync(tmpInput, req.file.buffer);
 
-    // Tweak sizes/quality as you like or make it dynamic
-    const buffer = await sharp(req.file.buffer)
-      .resize({ width: 800 })
+    // Use sharp to compress & resize
+    await sharp(tmpInput)
+      .resize({ width: 800 }) // tweak width as needed
       .jpeg({ quality: 70 })
-      .toBuffer();
+      .toFile(tmpOutput);
 
-    res.setHeader("Content-Type", "image/jpeg");
-    res.send(buffer);
+    // Send file to client
+    res.download(
+      tmpOutput,
+      `compressed_${path.parse(req.file.originalname).name}.jpg`,
+      () => cleanup([tmpInput, tmpOutput])
+    );
   } catch (err) {
     console.error("Image compression error:", err);
+    cleanup([tmpInput, tmpOutput]);
     res.status(500).send("Image compression failed");
   }
 });
 
 
-// ---------------- VIDEO COMPRESSION ----------------
 app.post("/compress/video", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded");
 
@@ -185,7 +194,6 @@ app.post("/compress/video", upload.single("file"), async (req, res) => {
   }
 });
 
-// ---------------- AUDIO COMPRESSION ----------------
 app.post("/compress/audio", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded");
   if (!CODEC_SUPPORT.mp3 && !CODEC_SUPPORT.aac && !CODEC_SUPPORT.opus)
@@ -195,31 +203,34 @@ app.post("/compress/audio", upload.single("file"), async (req, res) => {
   const tmpInput = tmpFile(path.extname(req.file.originalname).slice(1) || "mp3");
   const tmpOutput = tmpFile(ext);
 
+  const compressAudio = (input, output, codec) =>
+    new Promise((resolve, reject) => {
+      ffmpeg(input)
+        .output(output)
+        .outputOptions([
+          `-acodec ${codec}`,
+          codec === "libmp3lame" ? "-b:a 96k" : "",
+          codec === "aac" ? "-b:a 96k" : "",
+          codec === "libopus" ? "-b:a 64k" : "",
+          "-ar 44100",            // standard sample rate
+          "-threads 2",           // multi-threading for faster encoding
+          `-f ${ext}`             // enforce container format
+        ].filter(Boolean))
+        .on("error", (err) => reject(err))
+        .on("end", () => resolve())
+        .run();
+    });
+
   try {
     fs.writeFileSync(tmpInput, req.file.buffer);
+    await compressAudio(tmpInput, tmpOutput, AUDIO_CONFIG.codec);
 
-    ffmpeg(tmpInput)
-      .output(tmpOutput)
-      .outputOptions([
-        `-acodec ${AUDIO_CONFIG.codec}`,
-        AUDIO_CONFIG.codec === "libmp3lame" ? "-b:a 96k" : "",
-        AUDIO_CONFIG.codec === "aac" ? "-b:a 96k" : "",
-        AUDIO_CONFIG.codec === "libopus" ? "-b:a 64k" : "",
-      ])
-      .on("error", (err) => {
-        console.error("FFmpeg audio error:", err.message);
-        cleanup([tmpInput, tmpOutput]);
-        if (!res.headersSent) res.status(500).send("Audio compression failed");
-      })
-      .on("end", () => {
-        console.log("Audio compression finished");
-        res.download(
-          tmpOutput,
-          `compressed_${path.parse(req.file.originalname).name}.${ext}`,
-          () => cleanup([tmpInput, tmpOutput])
-        );
-      })
-      .run();
+    console.log("Audio compression finished (speed optimized)");
+    res.download(
+      tmpOutput,
+      `compressed_${path.parse(req.file.originalname).name}.${ext}`,
+      () => cleanup([tmpInput, tmpOutput])
+    );
   } catch (err) {
     console.error("Audio route error:", err);
     cleanup([tmpInput, tmpOutput]);
@@ -228,12 +239,10 @@ app.post("/compress/audio", upload.single("file"), async (req, res) => {
 });
 
 
-// ---------------- Serve static frontend ----------------
 if (fs.existsSync(publicDir)) {
   app.use(express.static(publicDir));
 }
 
-// ---------------- SPA fallback & catch-all ----------------
 app.get("*", (req, res) => {
   if (req.path.startsWith("/compress/")) {
     return res.status(404).send("Route not found");
@@ -246,7 +255,7 @@ app.get("*", (req, res) => {
   }
 });
 
-// ---------------- Log routes (debug) ----------------
+
 app._router?.stack?.forEach((middleware) => {
   if (middleware.route) {
     const methods = Object.keys(middleware.route.methods)
@@ -256,6 +265,6 @@ app._router?.stack?.forEach((middleware) => {
   }
 });
 
-// ---------------- Start server ----------------
+
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
