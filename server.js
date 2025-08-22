@@ -69,8 +69,11 @@ app.post("/compress/video", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded");
 
   const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
+  const tmpOutput = path.join(os.tmpdir(), `out_${uuidv4()}.mp4`);
+
   fs.writeFileSync(tmpInput, req.file.buffer);
-res.setHeader("Access-Control-Allow-Origin", "https://filesizecompressor.vercel.app");
+
+  res.setHeader("Access-Control-Allow-Origin", "https://filesizecompressor.vercel.app");
   res.setHeader("Content-Type", "video/mp4");
   res.setHeader(
     "Content-Disposition",
@@ -78,17 +81,26 @@ res.setHeader("Access-Control-Allow-Origin", "https://filesizecompressor.vercel.
   );
 
   ffmpeg(tmpInput)
-    .outputOptions(["-vcodec libx264", "-crf 28", "-preset superfast"])
-    .format("mp4")
+    .outputOptions([
+      "-vcodec libx264",
+      "-crf 28",             // quality
+      "-preset superfast",   // faster encoding
+      "-c:a aac",            // make sure audio is handled
+      "-b:a 128k"
+    ])
+    .save(tmpOutput)
     .on("error", (err) => {
-      console.error("FFmpeg video error:", err);
+      console.error("FFmpeg video error:", err.message);
       if (!res.headersSent) res.status(500).send("Video compression failed");
-      if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
+      [tmpInput, tmpOutput].forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
     })
     .on("end", () => {
-      if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
-    })
-    .pipe(res, { end: true });
+      const readStream = fs.createReadStream(tmpOutput);
+      readStream.pipe(res);
+      readStream.on("close", () => {
+        [tmpInput, tmpOutput].forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
+      });
+    });
 });
 
 // ---------------- AUDIO COMPRESSION ----------------
@@ -96,27 +108,36 @@ app.post("/compress/audio", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded");
 
   const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
+  const tmpOutput = path.join(os.tmpdir(), `out_${uuidv4()}.mp3`);
+
   fs.writeFileSync(tmpInput, req.file.buffer);
-res.setHeader("Access-Control-Allow-Origin", "https://filesizecompressor.vercel.app");
+
+  res.setHeader("Access-Control-Allow-Origin", "https://filesizecompressor.vercel.app");
   res.setHeader("Content-Type", "audio/mpeg");
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename="compressed_${req.file.originalname}.mp3"`
+    `attachment; filename="compressed_${path.parse(req.file.originalname).name}.mp3"`
   );
 
   ffmpeg(tmpInput)
-    .audioBitrate("96k")
-    .format("mp3")
+    .audioCodec("libmp3lame")   // explicit codec
+    .audioBitrate("96k")        // smaller size
+    .output(tmpOutput)
     .on("error", (err) => {
-      console.error("FFmpeg audio error:", err);
+      console.error("FFmpeg audio error:", err.message);
       if (!res.headersSent) res.status(500).send("Audio compression failed");
-      if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
+      [tmpInput, tmpOutput].forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
     })
     .on("end", () => {
-      if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
+      const readStream = fs.createReadStream(tmpOutput);
+      readStream.pipe(res);
+      readStream.on("close", () => {
+        [tmpInput, tmpOutput].forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
+      });
     })
-    .pipe(res, { end: true });
+    .run();
 });
+
 
 // ---------------- Serve static frontend ----------------
 if (fs.existsSync(publicDir)) {
