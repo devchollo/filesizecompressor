@@ -10,98 +10,107 @@ import { fileURLToPath } from "url";
 import { v4 as uuidv4 } from "uuid";
 import cors from "cors";
 
-// ----------- Setup ----------- //
-const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
+// ---------------- Setup ----------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Serve frontend
-app.use(express.static(path.join(__dirname, "public")));
+const app = express();
+const upload = multer({ storage: multer.memoryStorage() });
 
-// CORS
-app.use(
-  cors({
-    origin: "https://filesizecompressor.vercel.app", // frontend URL
-  })
-);
-
-// Set ffmpeg path
+// Use cross-platform FFmpeg
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
-// ----------- IMAGE COMPRESSION ----------- //
+// Apply CORS globally
+app.use(cors({
+  origin: "https://filesizecompressor.vercel.app",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"]
+}));
+app.options("*", cors()); // preflight requests
+
+// Serve frontend (if needed)
+app.use(express.static(path.join(__dirname, "public")));
+
+// ---------------- IMAGE COMPRESSION ----------------
 app.post("/compress/image", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).send("No file uploaded");
 
     const compressedBuffer = await sharp(req.file.buffer)
-      .resize({ width: 800 }) // optional
+      .resize({ width: 800 }) // optional resize
       .jpeg({ quality: 70 })
       .toBuffer();
 
-    res.set("Content-Type", "image/jpeg");
+    res.setHeader("Content-Type", "image/jpeg");
     res.send(compressedBuffer);
   } catch (err) {
-    console.error("Image compression error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Image compression failed" });
   }
 });
 
-// ----------- VIDEO COMPRESSION ----------- //
-app.post("/compress/video", upload.single("file"), (req, res) => {
-  if (!req.file) return res.status(400).send("No file uploaded");
+// ---------------- VIDEO COMPRESSION ----------------
+app.post("/compress/video", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).send("No file uploaded");
 
-  const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
-  const tmpOutput = path.join(os.tmpdir(), `${uuidv4()}_compressed.mp4`);
-  fs.writeFileSync(tmpInput, req.file.buffer);
+    const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
+    const tmpOutput = path.join(os.tmpdir(), `${uuidv4()}_compressed.mp4`);
 
-  ffmpeg(tmpInput)
-    .outputOptions(["-vcodec libx264", "-crf 28", "-preset veryfast"])
-    .save(tmpOutput)
-    .on("end", () => {
-      res.setHeader("Content-Type", "video/mp4");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="compressed_${req.file.originalname}"`
-      );
+    fs.writeFileSync(tmpInput, req.file.buffer);
 
-      const stream = fs.createReadStream(tmpOutput);
-      stream.pipe(res);
-
-      stream.on("close", () => {
-        fs.unlinkSync(tmpInput);
-        fs.unlinkSync(tmpOutput);
+    ffmpeg(tmpInput)
+      .outputOptions(["-vcodec libx264", "-crf 28", "-preset veryfast"])
+      .save(tmpOutput)
+      .on("end", () => {
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="compressed_${req.file.originalname}"`
+        );
+        fs.createReadStream(tmpOutput).pipe(res).on("close", () => {
+          fs.unlinkSync(tmpInput);
+          fs.unlinkSync(tmpOutput);
+        });
+      })
+      .on("error", (err) => {
+        console.error("FFmpeg error:", err);
+        if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
+        if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput);
+        res.status(500).send("Video compression failed");
       });
-    })
-    .on("error", (err) => {
-      if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
-      if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput);
-      console.error("FFmpeg video error:", err.message);
-      res.status(500).send("Video compression failed");
-    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Server error");
+  }
 });
 
-// ----------- AUDIO COMPRESSION ----------- //
-app.post("/compress/audio", upload.single("file"), (req, res) => {
-  if (!req.file) return res.status(400).send("No file uploaded");
+// ---------------- AUDIO COMPRESSION ----------------
+app.post("/compress/audio", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).send("No file uploaded");
 
-  const tmpFile = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
-  fs.writeFileSync(tmpFile, req.file.buffer);
+    const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
+    fs.writeFileSync(tmpInput, req.file.buffer);
 
-  res.set("Content-Type", "audio/mp3");
-
-  ffmpeg(tmpFile)
-    .audioBitrate("128k")
-    .format("mp3")
-    .on("end", () => fs.unlinkSync(tmpFile))
-    .on("error", (err) => {
-      if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
-      console.error("FFmpeg audio error:", err.message);
-      res.status(500).json({ error: err.message });
-    })
-    .pipe(res, { end: true });
+    ffmpeg(tmpInput)
+      .audioBitrate("128k")
+      .format("mp3")
+      .on("end", () => {
+        fs.unlinkSync(tmpInput);
+      })
+      .on("error", (err) => {
+        console.error("FFmpeg audio error:", err);
+        if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
+        res.status(500).send("Audio compression failed");
+      })
+      .pipe(res, { end: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Server error");
+  }
 });
 
-// ----------- Start Server ----------- //
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+// ---------------- START SERVER ----------------
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
