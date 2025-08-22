@@ -24,13 +24,15 @@ ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 // Allow your frontend or all origins
 app.use(
   cors({
-    origin: "https://filesizecompressor.vercel.app", // change to "*" if testing
+    origin: "https://filesizecompressor.vercel.app", 
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
   })
 );
-app.options("*", cors()); // handle preflight requests
-
+app.all("*", (req, res) => {
+  res.status(404).send("Route not found");
+});
+app.options("*", cors()); 
 // ---------------- Serve frontend (optional) ----------------
 const publicDir = path.join(__dirname, "public");
 if (fs.existsSync(publicDir)) {
