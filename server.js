@@ -18,20 +18,6 @@ const publicDir = path.join(__dirname, "public");
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// ---------------- Wrap app.get for route logging ----------------
-const originalGet = app.get.bind(app);
-app.get = (routePath, ...args) => {
-  if (typeof routePath === 'string') {
-    console.log("Registering GET route:", routePath);
-  } else if (routePath instanceof RegExp) {
-    console.log("Registering GET route (RegExp):", routePath.toString());
-  } else {
-    console.log("Registering GET route (unknown type):", routePath);
-  }
-  return originalGet(routePath, ...args);
-};
-
-// Use cross-platform FFmpeg from installer
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 // ---------------- CORS ----------------
@@ -43,7 +29,7 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // allow curl, mobile apps
+      if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
       return callback(new Error("CORS origin not allowed"), false);
     },
@@ -52,7 +38,6 @@ app.use(
   })
 );
 
-// Handle preflight requests
 app.options("*", cors());
 
 // ---------------- Request Logger ----------------
@@ -139,17 +124,25 @@ if (fs.existsSync(publicDir)) {
 }
 
 // ---------------- SPA fallback & catch-all ----------------
-// This handles all GET requests that are not /compress/*, serving index.html for SPA routing
 app.get('*', (req, res) => {
   if (req.path.startsWith('/compress/')) {
     return res.status(404).send("Route not found");
   }
-
   const indexHtml = path.join(publicDir, "index.html");
   if (fs.existsSync(indexHtml)) {
     res.sendFile(indexHtml);
   } else {
     res.status(404).send("Frontend not found");
+  }
+});
+
+// ---------------- Log all routes ----------------
+app._router.stack.forEach((middleware) => {
+  if (middleware.route) {
+    const methods = Object.keys(middleware.route.methods)
+      .map((m) => m.toUpperCase())
+      .join(", ");
+    console.log(`${methods} ${middleware.route.path}`);
   }
 });
 
