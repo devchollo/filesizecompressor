@@ -59,38 +59,35 @@ app.post("/compress/video", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded");
 
   const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
-  const tmpOutput = path.join(os.tmpdir(), `${uuidv4()}_compressed.mp4`);
+  fs.writeFileSync(tmpInput, req.file.buffer);
 
   try {
-    fs.writeFileSync(tmpInput, req.file.buffer);
+    // Set headers BEFORE streaming
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="compressed_${req.file.originalname}"`
+    );
 
     ffmpeg(tmpInput)
       .outputOptions(["-vcodec libx264", "-crf 28", "-preset veryfast"])
-      .save(tmpOutput)
-      .on("end", () => {
-        res.setHeader("Content-Type", "video/mp4");
-        res.setHeader(
-          "Content-Disposition",
-          `attachment; filename="compressed_${req.file.originalname}"`
-        );
-
-        const stream = fs.createReadStream(tmpOutput);
-        stream.pipe(res).on("close", () => {
-          // Cleanup
-          [tmpInput, tmpOutput].forEach((f) => fs.existsSync(f) && fs.unlinkSync(f));
-        });
-      })
+      .format("mp4")
       .on("error", (err) => {
         console.error("FFmpeg video error:", err);
-        [tmpInput, tmpOutput].forEach((f) => fs.existsSync(f) && fs.unlinkSync(f));
-        res.status(500).send("Video compression failed");
-      });
+        if (!res.headersSent) res.status(500).send("Video compression failed");
+        fs.existsSync(tmpInput) && fs.unlinkSync(tmpInput);
+      })
+      .on("end", () => {
+        fs.existsSync(tmpInput) && fs.unlinkSync(tmpInput);
+      })
+      .pipe(res, { end: true }); // stream directly to client
   } catch (err) {
     console.error("Video processing error:", err);
-    [tmpInput, tmpOutput].forEach((f) => fs.existsSync(f) && fs.unlinkSync(f));
-    res.status(500).send("Server error");
+    fs.existsSync(tmpInput) && fs.unlinkSync(tmpInput);
+    if (!res.headersSent) res.status(500).send("Server error");
   }
 });
+
 
 // ---------------- AUDIO COMPRESSION ----------------
 app.post("/compress/audio", upload.single("file"), async (req, res) => {
@@ -100,24 +97,35 @@ app.post("/compress/audio", upload.single("file"), async (req, res) => {
   fs.writeFileSync(tmpInput, req.file.buffer);
 
   try {
+    // Set headers before streaming
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="compressed_${req.file.originalname}.mp3"`
+    );
+
     ffmpeg(tmpInput)
       .audioBitrate("128k")
       .format("mp3")
-      .on("end", () => {
-        fs.existsSync(tmpInput) && fs.unlinkSync(tmpInput);
-      })
       .on("error", (err) => {
         console.error("FFmpeg audio error:", err);
+        if (!res.headersSent) {
+          res.status(500).send("Audio compression failed");
+        }
         fs.existsSync(tmpInput) && fs.unlinkSync(tmpInput);
-        res.status(500).send("Audio compression failed");
+      })
+      .on("end", () => {
+        fs.existsSync(tmpInput) && fs.unlinkSync(tmpInput);
       })
       .pipe(res, { end: true });
   } catch (err) {
     console.error("Audio processing error:", err);
     fs.existsSync(tmpInput) && fs.unlinkSync(tmpInput);
-    res.status(500).send("Server error");
+    if (!res.headersSent) res.status(500).send("Server error");
   }
 });
+
+
 
 // ---------------- CATCH ALL ----------------
 app.all("*", (req, res) => res.status(404).send("Route not found"));
