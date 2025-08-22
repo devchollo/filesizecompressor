@@ -23,7 +23,7 @@ ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 // ---------------- CORS ----------------
 const allowedOrigins = [
   "https://filesizecompressor.vercel.app",
-  "http://localhost:3000",
+  "http://localhost:3000", // dev
 ];
 
 app.use(
@@ -37,7 +37,6 @@ app.use(
     allowedHeaders: ["Content-Type"],
   })
 );
-
 app.options("*", cors());
 
 // ---------------- Request Logger ----------------
@@ -46,16 +45,95 @@ app.use((req, res, next) => {
   next();
 });
 
+// ---------------- FFmpeg codec detection & fallbacks ----------------
+const CODEC_SUPPORT = {
+  x264: false,
+  mpeg4: false,
+  mp3: false,
+  aac: false,
+  opus: false,
+};
+
+let VIDEO_CONFIG = { vCodec: "libx264", aCodec: "aac", container: "mp4" };
+let AUDIO_CONFIG = { codec: "libmp3lame", container: "mp3", mime: "audio/mpeg" };
+
+function logCodecPlan() {
+  console.log("🎬 Video plan:", VIDEO_CONFIG);
+  console.log("🎵 Audio plan:", AUDIO_CONFIG);
+}
+
+ffmpeg.getAvailableCodecs((err, codecs) => {
+  if (err) {
+    console.error("❌ Failed to query ffmpeg codecs:", err);
+  } else {
+    CODEC_SUPPORT.x264 = !!(codecs.libx264 && codecs.libx264.canEncode);
+    CODEC_SUPPORT.mpeg4 = !!(codecs.mpeg4 && codecs.mpeg4.canEncode);
+    CODEC_SUPPORT.mp3 = !!(codecs.libmp3lame && codecs.libmp3lame.canEncode);
+    CODEC_SUPPORT.aac = !!(codecs.aac && codecs.aac.canEncode);
+    CODEC_SUPPORT.opus = !!(codecs.libopus && codecs.libopus.canEncode);
+
+    // Decide video codec/container
+    if (CODEC_SUPPORT.x264) {
+      VIDEO_CONFIG.vCodec = "libx264";
+      VIDEO_CONFIG.container = "mp4";
+    } else if (CODEC_SUPPORT.mpeg4) {
+      // Widely available fallback (older MPEG-4 Part 2), larger files but works
+      VIDEO_CONFIG.vCodec = "mpeg4";
+      VIDEO_CONFIG.container = "mp4";
+      console.warn("⚠️ Falling back to mpeg4 for video (libx264 not available).");
+    } else {
+      console.warn("⚠️ No preferred video encoder found; attempting libx264 anyway.");
+    }
+
+    // Decide video audio codec
+    if (CODEC_SUPPORT.aac) {
+      VIDEO_CONFIG.aCodec = "aac";
+    } else if (CODEC_SUPPORT.mp3) {
+      // mp3 in mp4 is not ideal, but many players accept it; prefer AAC when possible.
+      VIDEO_CONFIG.aCodec = "libmp3lame";
+      console.warn("⚠️ Using MP3 audio inside MP4 (AAC not available).");
+    } else {
+      VIDEO_CONFIG.aCodec = "copy";
+      console.warn("⚠️ Copying source audio (no AAC/MP3 encoders available).");
+    }
+
+    // Decide audio endpoint defaults & MIME
+    if (CODEC_SUPPORT.mp3) {
+      AUDIO_CONFIG = { codec: "libmp3lame", container: "mp3", mime: "audio/mpeg" };
+    } else if (CODEC_SUPPORT.aac) {
+      AUDIO_CONFIG = { codec: "aac", container: "m4a", mime: "audio/mp4" };
+      console.warn("⚠️ Falling back to AAC (.m4a) for audio endpoint (MP3 not available).");
+    } else if (CODEC_SUPPORT.opus) {
+      AUDIO_CONFIG = { codec: "libopus", container: "ogg", mime: "audio/ogg" };
+      console.warn("⚠️ Falling back to Opus (.ogg) for audio endpoint (MP3/AAC not available).");
+    } else {
+      console.warn("❌ No suitable audio encoder found for audio endpoint.");
+    }
+  }
+
+  logCodecPlan();
+});
+
+// ---------------- Helpers ----------------
+const tmpFile = (ext = "") => path.join(os.tmpdir(), `${uuidv4()}${ext ? "." + ext : ""}`);
+const cleanup = (files = []) =>
+  files.forEach((f) => {
+    try {
+      if (f && fs.existsSync(f)) fs.unlinkSync(f);
+    } catch (_) {}
+  });
+
 // ---------------- IMAGE COMPRESSION ----------------
 app.post("/compress/image", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).send("No file uploaded");
 
+    // Tweak sizes/quality as you like or make it dynamic
     const buffer = await sharp(req.file.buffer)
       .resize({ width: 800 })
       .jpeg({ quality: 70 })
       .toBuffer();
-res.setHeader("Access-Control-Allow-Origin", "https://filesizecompressor.vercel.app");
+
     res.setHeader("Content-Type", "image/jpeg");
     res.send(buffer);
   } catch (err) {
@@ -68,76 +146,85 @@ res.setHeader("Access-Control-Allow-Origin", "https://filesizecompressor.vercel.
 app.post("/compress/video", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded");
 
-  const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
-  const tmpOutput = path.join(os.tmpdir(), `out_${uuidv4()}.mp4`);
-
+  const inExt = path.extname(req.file.originalname).replace(/^\./, "") || "tmp";
+  const tmpInput = tmpFile(inExt);
+  const tmpOutput = tmpFile(VIDEO_CONFIG.container); // mp4 by default
   fs.writeFileSync(tmpInput, req.file.buffer);
 
-  res.setHeader("Access-Control-Allow-Origin", "https://filesizecompressor.vercel.app");
-  res.setHeader("Content-Type", "video/mp4");
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename="compressed_${req.file.originalname}"`
-  );
+  const outName = `compressed_${path.parse(req.file.originalname).name}.${VIDEO_CONFIG.container}`;
+  res.setHeader("Content-Type", "video/mp4"); // container is mp4 in both x264/mpeg4 paths
+  res.setHeader("Content-Disposition", `attachment; filename="${outName}"`);
 
-  ffmpeg(tmpInput)
+  const cmd = ffmpeg(tmpInput)
     .outputOptions([
-      "-vcodec libx264",
-      "-crf 28",             // quality
-      "-preset superfast",   // faster encoding
-      "-c:a aac",            // make sure audio is handled
-      "-b:a 128k"
+      `-vcodec ${VIDEO_CONFIG.vCodec}`,
+      "-crf 28",
+      "-preset superfast",
+      `-c:a ${VIDEO_CONFIG.aCodec}`,
+      "-b:a 128k",
+      "-movflags +faststart", // better streaming
     ])
-    .save(tmpOutput)
     .on("error", (err) => {
       console.error("FFmpeg video error:", err.message);
       if (!res.headersSent) res.status(500).send("Video compression failed");
-      [tmpInput, tmpOutput].forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
+      cleanup([tmpInput, tmpOutput]);
     })
     .on("end", () => {
       const readStream = fs.createReadStream(tmpOutput);
       readStream.pipe(res);
-      readStream.on("close", () => {
-        [tmpInput, tmpOutput].forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
-      });
-    });
+      readStream.on("close", () => cleanup([tmpInput, tmpOutput]));
+    })
+    .save(tmpOutput);
+
+  // If no audio encoder available and copy also fails for some inputs, you can
+  // conditionally drop audio instead by replacing aCodec with "none" and adding "-an".
 });
 
 // ---------------- AUDIO COMPRESSION ----------------
 app.post("/compress/audio", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded");
 
-  const tmpInput = path.join(os.tmpdir(), `${uuidv4()}_${req.file.originalname}`);
-  const tmpOutput = path.join(os.tmpdir(), `out_${uuidv4()}.mp3`);
+  if (!CODEC_SUPPORT.mp3 && !CODEC_SUPPORT.aac && !CODEC_SUPPORT.opus) {
+    return res
+      .status(501)
+      .send("No suitable audio encoders available on this server (MP3/AAC/Opus).");
+  }
 
+  const inExt = path.extname(req.file.originalname).replace(/^\./, "") || "tmp";
+  const tmpInput = tmpFile(inExt);
+  const tmpOutput = tmpFile(AUDIO_CONFIG.container);
   fs.writeFileSync(tmpInput, req.file.buffer);
 
-  res.setHeader("Access-Control-Allow-Origin", "https://filesizecompressor.vercel.app");
-  res.setHeader("Content-Type", "audio/mpeg");
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename="compressed_${path.parse(req.file.originalname).name}.mp3"`
-  );
+  const base = path.parse(req.file.originalname).name;
+  const outName = `compressed_${base}.${AUDIO_CONFIG.container}`;
 
-  ffmpeg(tmpInput)
-    .audioCodec("libmp3lame")   // explicit codec
-    .audioBitrate("96k")        // smaller size
-    .output(tmpOutput)
+  res.setHeader("Content-Type", AUDIO_CONFIG.mime);
+  res.setHeader("Content-Disposition", `attachment; filename="${outName}"`);
+
+  const chain = ffmpeg(tmpInput)
+    .audioCodec(AUDIO_CONFIG.codec)
     .on("error", (err) => {
       console.error("FFmpeg audio error:", err.message);
       if (!res.headersSent) res.status(500).send("Audio compression failed");
-      [tmpInput, tmpOutput].forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
+      cleanup([tmpInput, tmpOutput]);
     })
     .on("end", () => {
       const readStream = fs.createReadStream(tmpOutput);
       readStream.pipe(res);
-      readStream.on("close", () => {
-        [tmpInput, tmpOutput].forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
-      });
-    })
-    .run();
-});
+      readStream.on("close", () => cleanup([tmpInput, tmpOutput]));
+    });
 
+  // Bitrate / sample rate per codec
+  if (AUDIO_CONFIG.codec === "libmp3lame") {
+    chain.audioBitrate("96k").format("mp3");
+  } else if (AUDIO_CONFIG.codec === "aac") {
+    chain.audioBitrate("96k").format("ipod"); // m4a/aac in mp4 container
+  } else if (AUDIO_CONFIG.codec === "libopus") {
+    chain.audioBitrate("64k").format("ogg");
+  }
+
+  chain.save(tmpOutput);
+});
 
 // ---------------- Serve static frontend ----------------
 if (fs.existsSync(publicDir)) {
@@ -145,8 +232,8 @@ if (fs.existsSync(publicDir)) {
 }
 
 // ---------------- SPA fallback & catch-all ----------------
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/compress/')) {
+app.get("*", (req, res) => {
+  if (req.path.startsWith("/compress/")) {
     return res.status(404).send("Route not found");
   }
   const indexHtml = path.join(publicDir, "index.html");
@@ -157,8 +244,8 @@ app.get('*', (req, res) => {
   }
 });
 
-// ---------------- Log all routes ----------------
-app._router.stack.forEach((middleware) => {
+// ---------------- Log routes (debug) ----------------
+app._router?.stack?.forEach((middleware) => {
   if (middleware.route) {
     const methods = Object.keys(middleware.route.methods)
       .map((m) => m.toUpperCase())
