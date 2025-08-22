@@ -21,7 +21,13 @@ const upload = multer({ storage: multer.memoryStorage() });
 // ---------------- Wrap app.get for route logging ----------------
 const originalGet = app.get.bind(app);
 app.get = (routePath, ...args) => {
-  console.log("Registering GET route:", routePath);
+  if (typeof routePath === 'string') {
+    console.log("Registering GET route:", routePath);
+  } else if (routePath instanceof RegExp) {
+    console.log("Registering GET route (RegExp):", routePath.toString());
+  } else {
+    console.log("Registering GET route (unknown type):", routePath);
+  }
   return originalGet(routePath, ...args);
 };
 
@@ -92,10 +98,10 @@ app.post("/compress/video", upload.single("file"), (req, res) => {
     .on("error", (err) => {
       console.error("FFmpeg video error:", err);
       if (!res.headersSent) res.status(500).send("Video compression failed");
-      fs.existsSync(tmpInput) && fs.unlinkSync(tmpInput);
+      if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
     })
     .on("end", () => {
-      fs.existsSync(tmpInput) && fs.unlinkSync(tmpInput);
+      if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
     })
     .pipe(res, { end: true });
 });
@@ -119,10 +125,10 @@ app.post("/compress/audio", upload.single("file"), (req, res) => {
     .on("error", (err) => {
       console.error("FFmpeg audio error:", err);
       if (!res.headersSent) res.status(500).send("Audio compression failed");
-      fs.existsSync(tmpInput) && fs.unlinkSync(tmpInput);
+      if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
     })
     .on("end", () => {
-      fs.existsSync(tmpInput) && fs.unlinkSync(tmpInput);
+      if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
     })
     .pipe(res, { end: true });
 });
@@ -132,8 +138,13 @@ if (fs.existsSync(publicDir)) {
   app.use(express.static(publicDir));
 }
 
-// ---------------- SPA fallback ----------------
-app.get(/^(?!\/compress\/).*/, (req, res) => {
+// ---------------- SPA fallback & catch-all ----------------
+// This handles all GET requests that are not /compress/*, serving index.html for SPA routing
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/compress/')) {
+    return res.status(404).send("Route not found");
+  }
+
   const indexHtml = path.join(publicDir, "index.html");
   if (fs.existsSync(indexHtml)) {
     res.sendFile(indexHtml);
@@ -141,9 +152,6 @@ app.get(/^(?!\/compress\/).*/, (req, res) => {
     res.status(404).send("Frontend not found");
   }
 });
-
-// ---------------- Catch-all 404 ----------------
-app.all("*", (req, res) => res.status(404).send("Route not found"));
 
 // ---------------- Start server ----------------
 const PORT = process.env.PORT || 10000;
