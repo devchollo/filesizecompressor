@@ -78,7 +78,7 @@ app.post("/compress/video", upload.single("file"), (req, res) => {
   );
 
   ffmpeg(tmpInput)
-    .outputOptions(["-vcodec libx264", "-crf 28", "-preset veryfast"])
+    .outputOptions(["-vcodec libx264", "-crf 28", "-preset superfast"])
     .format("mp4")
     .on("error", (err) => {
       console.error("FFmpeg video error:", err);
@@ -105,7 +105,7 @@ app.post("/compress/audio", upload.single("file"), (req, res) => {
   );
 
   ffmpeg(tmpInput)
-    .audioBitrate("128k")
+    .audioBitrate("96k")
     .format("mp3")
     .on("error", (err) => {
       console.error("FFmpeg audio error:", err);
